@@ -6,7 +6,7 @@ export default Ember.Mixin.create({
     if (this.PUSHER_SUBSCRIPTIONS) {
       keys(this.PUSHER_SUBSCRIPTIONS).forEach(channelName => {
         let events = this.PUSHER_SUBSCRIPTIONS[channelName];
-        this.pusher.wire(this, channelName, events);
+        this.get('pusher').wire(this, channelName, events);
       });
     }
 
@@ -16,7 +16,7 @@ export default Ember.Mixin.create({
   willDestroy() {
     if (this.PUSHER_SUBSCRIPTIONS) {
       keys(this.PUSHER_SUBSCRIPTIONS).forEach(channelName => {
-        this.pusher.unwire(this, channelName);
+        this.get('pusher').unwire(this, channelName);
       });
     }
 
