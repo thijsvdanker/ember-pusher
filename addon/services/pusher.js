@@ -1,5 +1,6 @@
 import Ember from 'ember';
 import { keys } from 'ember-pusher/compat';
+import Pusher from "npm:pusher-js";
 
 // Need to track
 // 1) channel object
@@ -55,9 +56,8 @@ export default Ember.Service.extend({
 
   setup(applicationKey, options) {
     Ember.assert("ember-pusher can only be setup once", !this.pusher);
-    Ember.assert("You need to include the pusher libraries", !!window.Pusher);
 
-    this.pusher = new window.Pusher(applicationKey, options);
+    this.pusher = new Pusher(applicationKey, options);
     this.pusher.connection.bind('connected', this._didConnect.bind(this));
     this.pusher.connection.bind('disconnected', this._didDisconnect.bind(this));
     this.pusher.connection.bind('unavailable', this._didDisconnect.bind(this));
@@ -66,6 +66,29 @@ export default Ember.Service.extend({
   willDestroy() {
     if (this.pusher) {
       this.pusher.disconnect();
+    }
+  },
+
+  // If you have re-connected pusher, you will probably
+  // want to rewire all of the previous bindings
+  rewire() {
+    let bindings = this.get('bindings'),
+        channelNames = Object.keys(bindings);
+
+    for (let i = 0; i < channelNames.length; i++) {
+      let channelName = channelNames[i];
+      let contextObjects = Object.keys(bindings[channelName].eventBindings);
+
+      for (let j = 0; j < contextObjects.length; j++) {
+        let contextObject = contextObjects[j];
+        let events = bindings[channelName]
+          .eventBindings[contextObject]
+          .map((i) => i.eventName);
+        let target = bindings[channelName]
+          .eventBindings[contextObject][0]
+          .target;
+        this.wire(target, channelName, events);
+      }
     }
   },
 
@@ -78,6 +101,10 @@ export default Ember.Service.extend({
     let channel = this.connectChannel(channelName),
         bindings = this.get('bindings'),
         targetId = target._pusherEventsId();
+
+    if(typeof events === 'string') {
+      events = [events];
+    }
 
     // Setup the eventBindings array for this target
     if (!bindings[channelName].eventBindings[targetId]) {
@@ -139,17 +166,28 @@ export default Ember.Service.extend({
     return bindings[channelName].channel;
   },
 
-  unwire(target, channelName) {
+  unwire(target, channelName, eventsToUnwire) {
     let pusher = this.pusher,
         bindings = this.get('bindings'),
         targetId = target._pusherEventsId(),
-        channel = bindings[channelName].channel;
+        channel = bindings[channelName].channel,
+        eventBindings = bindings[channelName].eventBindings[targetId];
 
-    // Unbind all the events for this target
-    for (let binding in bindings[channelName].eventBindings[targetId]) {
-      channel.unbind(binding.eventName, binding.handler);
+    if(typeof eventsToUnwire === 'string') {
+      eventsToUnwire = [eventsToUnwire];
     }
-    delete bindings[channelName].eventBindings[targetId];
+
+    eventBindings.forEach((binding, index) => {
+      if(eventsToUnwire && !eventsToUnwire.contains(binding.eventName)) {
+        return;
+      }
+      channel.unbind(binding.eventName, binding.handler);
+      eventBindings.splice(index, 1);
+    });
+
+    if (Ember.isEmpty(eventBindings)) {
+      delete bindings[channelName].eventBindings[targetId];
+    }
 
     // Unsubscribe from the channel if this is the last thing listening
     if (keys(bindings[channelName].eventBindings).length === 0) {

@@ -1,4 +1,4 @@
-# Ember Pusher [![Build Status](https://travis-ci.org/jamiebikies/ember-pusher.png?branch=master)](https://travis-ci.org/jamiebikies/ember-pusher)
+# Ember Pusher
 
 A library for declaratively managing connections to Pusher channels and events
 in your Ember application.
@@ -9,33 +9,47 @@ are natural methods on your controllers. In fact: The full event bubbling
 framework is available to the pusher initiated events.
 
 
-### Download
-- [ember-pusher.js](https://ember-pusher-builds.s3.amazonaws.com/ember-pusher.js)
-- [ember-pusher.min.js](https://ember-pusher-builds.s3.amazonaws.com/ember-pusher.min.js)
-- [ember-pusher.amd.js](https://ember-pusher-builds.s3.amazonaws.com/ember-pusher.amd.js)
+### Install
+In your ember app, run:  
+`npm install --save-dev ember-pusher`
+
+Because ember pusher uses the Pusher library which doesn't have a bower module
+we need to use browserify to bring it into the addon. Unfortunately this means
+that in your app you will need to do the following. That's it.
+
+`npm install --save-dev ember-browserify` (check to make sure you don't already have this in your `package.json`)  
+`npm install --save-dev pusher-js@3.1.0` (make sure you don't have `pusher` being pulled in in your bower.json)
 
 
 ### Is it good?
 Yes
 
-### Is it production ready?
-I guess? Ship it! :shipit:
-
-
 ### How do I use this thing?
-Good question!
-
-First things first: Stick your pusher connection options on your Application
-object. Anything you pass into the `connection` hash will be passed in as
-options to the pusher connection. This is a good place for auth params, and
-things like that. You can get a list of all the options from
-[Pusher's API](http://pusher.com/docs/client_api_guide/client_connect#connecting).
-
+Good question! This is just one example, but the idea below, is that you
+will at some point in your application initialization call the pusher
+service's `setup(args)` method. This method takes in the pusher key and
+a hash of options which get sent to the pusher connect method.  
+  
+If you're interested in the kinds of things you can pass in...
+[Pusher's API](http://pusher.com/docs/client_api_guide/client_connect#connecting)  
 
 ```javascript
-App = Ember.Application.create({
-  PUSHER_OPTS: { key: 'foo', connection: {} }
-});
+// app/pods/application/route.js
+setupController(controller, model) {
+
+  let csrfToken = 'your-csrf-token',
+      pusherKey = 'your-pusher-key';
+  
+  // pusher (the service) is injected into routes and controllers
+  this.get('pusher').setup(pusherKey, {
+    auth: {
+      params: {
+        authenticity_token: csrfToken
+      }
+    }
+  });
+  
+},
 ```
 
 Next, for any controllers that you want to catch pusher events on:
@@ -44,8 +58,8 @@ Next, for any controllers that you want to catch pusher events on:
 2. Define `PUSHER_SUBSCRIPTIONS` where the keys are channel names and the
    values are arrays of events for the channel. If you have dynamic channel
    names or events, you can totally just construct your `PUSHER_SUBSCRIPTIONS`
-   hash in `init()` of your controller (note: be sure to call ```this._super()``` afterwards). Private channels are fine.
-3. Implement your event handlers on the controller.
+   hash in `init()` of your controller (note: be sure to call ```this._super()``` afterwards). Private channels are fine. As a very dynamic alternative, you can use `wire()` and `unwire()` on the pusher service manually as described below.
+3. Implement your event handlers on the controller according to the conventions.
 
 
 ##### Logging
@@ -89,6 +103,42 @@ var YourController = Em.Controller.extend(EmberPusher.Bindings, {
 });
 ```
 
+##### Example if the channel name is dynamic.
+```javascript
+import Ember from 'ember';
+import EmberPusher from 'ember-pusher';
+
+export default Ember.Component.extend(EmberPusher.Bindings, {
+
+  pusher: Ember.inject.service(),
+  pusherEvents: ['event-one', 'event-two'],
+
+  didInsertElement() {
+    let pusher = this.get('pusher');
+    
+    // Signature for wire is wire(target, channelName, events)
+    pusher.wire(this, this.get('channelName'), this.get('pusherEvents'));
+  }),
+  
+  // Clean up when we leave. We probably don't want to still be receiving
+  // events. This is all done automatically if wiring events via PUSHER_SUBSCRIPTIONS.
+  willDestroyElement() {
+    this.get('pusher').unwire(this, this.get('channelName'));
+  },
+  
+  actions: {
+    eventOne() {
+      console.log('event one!');
+    },
+    
+    eventTwo() {
+      console.log('event two!');
+    }
+  }
+  
+}
+```
+
 **Note**: The event names have `camelize()` called on them, so that you can
 keep your controller's methods looking consistent. Event handlers are tracked
 and torn down when a controller is destroyed.
@@ -120,7 +170,6 @@ var YourController = Em.Controller.extend(EmberPusher.ClientEvents, {
   }
 });
 ```
-
 
 
 ### FAQ
